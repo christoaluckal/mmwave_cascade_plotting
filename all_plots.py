@@ -270,6 +270,9 @@ def reordering(frames):
 
     return data_dict
 
+def get_stat_string(data,precision):
+    return f"Max: {np.round(np.max(data),precision)} Min: {np.round(np.min(data),precision)} Mean: {np.round(np.mean(data),precision)} Std: {np.round(np.std(data),precision)}"
+
 # def plot(fftdata,filter,dir,title_name):
 #     for i in tqdm(range(fftdata.shape[0])):
 #         for j in range(fftdata.shape[1]):
@@ -299,7 +302,7 @@ def reordering(frames):
 #             plt.savefig(save_path)
 #             plt.close()
 
-def plot(original, filtered, dir, title_name):
+def plot2d(original, filtered, dir, title_name, additional_stats=None):
     for i in tqdm(range(original.shape[0])):
         for j in range(original.shape[1]):
             fig, ax = plt.subplots(2,1, figsize=(11, 8))
@@ -308,11 +311,11 @@ def plot(original, filtered, dir, title_name):
             
             og_data = original[i,j,:,:]
             og_data = np.log(np.abs(og_data)+1e-6)
-            og_data_stats = f"OG Max: {np.round(np.mean(og_data), 2)} Min: {np.round(np.min(og_data), 2)} Mean: {np.round(np.mean(og_data), 2)} Std: {np.round(np.std(og_data), 2)}"
+            og_data_stats = f"OG {get_stat_string(og_data, 4)}"
 
             filtered_data = filtered[i,j,:,:]
             filtered_data = np.log(np.abs(filtered_data)+1e-6)
-            filtered_data_stats = f"LPF Max: {np.round(np.mean(filtered_data), 2)} Min: {np.round(np.min(filtered_data), 2)} Mean: {np.round(np.mean(filtered_data), 2)} Std: {np.round(np.std(filtered_data), 2)}"
+            filtered_data_stats = f"LPF {get_stat_string(filtered_data, 4)}"
 
             ax[0].imshow(og_data, aspect='auto')
             ax[0].set_title(og_data_stats)
@@ -322,11 +325,33 @@ def plot(original, filtered, dir, title_name):
             ax[1].set_title(filtered_data_stats)
             fig.colorbar(ax[1].imshow(filtered_data, aspect='auto'), orientation='horizontal')
 
-            fig.suptitle(title)
+            fig.suptitle(title + f"\n{additional_stats}" if additional_stats else title)
 
             save_path = os.path.join(dir, f"{title}.png")
             plt.savefig(save_path)
             plt.close()
+
+    
+def plot3d(data,tx=0,rx=0):
+    fig = plt.figure(figsize=(11, 8))
+    ax = fig.add_subplot(111, projection='3d')
+    
+    X = np.arange(0, data.shape[3])
+    Y = np.arange(0, data.shape[2])
+    X, Y = np.meshgrid(X, Y)
+    Z = np.log(np.abs(data[tx,rx,:,:])+1e-6)
+
+    skip = 50
+
+    X = X[::skip,::skip]
+    Y = Y[::skip,::skip]
+    Z = Z[::skip,::skip]
+    ax.plot_surface(X, Y, Z, cmap='viridis')
+
+    
+
+    ax.set_title(f"TX {tx+1} RX {rx+1}")
+    plt.show()
 
 
 def plots(data_dict):
@@ -336,21 +361,13 @@ def plots(data_dict):
     frame_collate_diff = data_dict['frame_collate_diff']
 
     filter_1 = np.copy(txrx_frame_collation) # Contains original raw data shape (12x4x511x4096)
-    print("Frame shape: ", filter_1.shape)
     filter_1 = filter_1[:,:,0:50,:] # Select the first 50 frames
-    print("Filter 1 shape: ", filter_1.shape)
     filter_1 = np.mean(filter_1, axis=2) # Average over the frames
-    print("Filter 1 shape mean: ", filter_1.shape)
     filter_1 = filter_1.reshape(filter_1.shape[0], filter_1.shape[1], 1, filter_1.shape[2]) # Reshape to (12x4x1x4096)
-    print("Filter 1 shape reshape: ", filter_1.shape)
     txrx_frame_filtered = np.copy(txrx_frame_collation) - filter_1 # Filtered data shape (12x4x511x4096)
-    print("TxRx Frame Filtered shape: ", txrx_frame_filtered.shape)
     txrx_frame_filtered = np.fft.fftshift(np.fft.fft(txrx_frame_filtered, axis=3), axes=3) # FFT of the filtered data over ADC samples
-    print("TxRx Frame Filtered FFT shape: ", txrx_frame_filtered.shape)
     txrx_frame_original = np.fft.fftshift(np.fft.fft(txrx_frame_collation, axis=3), axes=3) # FFT of the original raw data over ADC samples
-    print("TxRx Frame Original FFT shape: ", txrx_frame_original.shape)
     filter_1 = np.fft.fftshift(np.fft.fft(filter_1, axis=3), axes=3) # FFT of the filter over ADC samples
-    print("Filter 1 FFT shape: ", filter_1.shape)
 
 
     filter_2 = np.copy(txrx_frame_collation_diff)
@@ -367,7 +384,7 @@ def plots(data_dict):
     frame_filtered_diff = np.fft.fftshift(np.fft.fft(frame_filtered_diff, axis=3), axes=3)
     frame_original_diff = np.fft.fftshift(np.fft.fft(frame_collate_diff, axis=3), axes=3)
 
-    base_dir = os.path.join(os.getcwd(), 'fft_plots')
+    base_dir = os.path.join(os.getcwd(), 'fft_plots', args.output_dir)
 
     txrx_dir = os.path.join(base_dir, 'txrx_collation')
 
@@ -384,18 +401,22 @@ def plots(data_dict):
     if not os.path.exists(frame_diff_dir):
         os.makedirs(frame_diff_dir,exist_ok=True)
 
-    # plot(txrx_frame_original, filter_1, reg_txrx_dir, "TxRx Collation")
-    # plot(txrx_frame_filtered, filter_1, lpf_txrx_dir, "TxRx Collation LPF")
+    txrx_og = data_dict['txrx_frame_collation']
+    txrx_diff_og = data_dict['txrx_frame_collation_diff']
+    frame_og = data_dict['frame_collate_diff']
 
-    # plot(txrx_frame_original_diff, filter_2, reg_txrx_diff_dir, "TxRx Collation Chirp Diff")
-    # plot(txrx_frame_filtered_diff, filter_2, lpf_txrx_diff_dir, "TxRx Collation Chirp Diff LPF")
+    txrx_og_stats = get_stat_string(txrx_og, 4)
+    txrx_diff_og_stats = get_stat_string(txrx_diff_og, 4)
+    frame_og_stats = get_stat_string(frame_og, 4)
 
-    # plot(frame_original_diff, filter_3, reg_frame_diff_dir, "Frame Diff")
-    # plot(frame_filtered_diff, filter_3, lpf_frame_diff_dir, "Frame Diff LPF")
-        
-    plot(txrx_frame_original, txrx_frame_filtered, txrx_dir, "TxRx Collation")
-    plot(txrx_frame_original_diff, txrx_frame_filtered_diff, txrx_diff_dir, "TxRx Collation Chirp Diff")
-    plot(frame_original_diff, frame_filtered_diff, frame_diff_dir, "Frame Diff")
+    # plot2d(txrx_frame_original, txrx_frame_filtered, txrx_dir, "TxRx Collation", txrx_og_stats)
+    # plot2d(txrx_frame_original_diff, txrx_frame_filtered_diff, txrx_diff_dir, "TxRx Collation Chirp Diff", txrx_diff_og_stats)
+    # plot2d(frame_original_diff, frame_filtered_diff, frame_diff_dir, "Frame Diff", frame_og_stats)
+    # plot3d(txrx_frame_original)
+
+    plot2d(txrx_frame_original, txrx_frame_filtered, txrx_dir, "TxRx Collation", None)
+    plot2d(txrx_frame_original_diff, txrx_frame_filtered_diff, txrx_diff_dir, "TxRx Collation Chirp Diff", None)
+    plot2d(frame_original_diff, frame_filtered_diff, frame_diff_dir, "Frame Diff", None)
 
 
 
