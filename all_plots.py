@@ -229,10 +229,32 @@ def toframe(
     return master_frames
 
 def reordering(frames):
+
+    data_dict = {
+        'master_frames': None,
+        'txrx_frame_collation': None,
+        'txrx_frame_collation_diff': None,
+        'frame_collate_diff': None
+    }
+
     master_frames = np.array(frames)
     master_frames = master_frames[...,0]+1j*master_frames[...,1]
-    
-    print("Frame shape: ", master_frames.shape)
+
+
+    print("Original Frame Data shape: ", master_frames.shape)
+
+    # Inserting 0s to account for per chirp downtime
+    zeroes = np.zeros((master_frames.shape[0], master_frames.shape[1], master_frames.shape[2], master_frames.shape[3], 152))
+    ones = np.ones((master_frames.shape[0], master_frames.shape[1], master_frames.shape[2], master_frames.shape[3], 152))
+    complex_ = ones + 1j*zeroes
+
+    print("Chirp zeroes (1+0j) shape: ", complex_.shape)
+
+    master_frames = np.concatenate((master_frames, complex_), axis=4)
+
+    data_dict['master_frames'] = master_frames
+
+    print("Frame shape with chirp zeroes: ", master_frames.shape)
 
     collate_chiprs = np.copy(master_frames).reshape(-1, master_frames.shape[1], master_frames.shape[2], master_frames.shape[3]*master_frames.shape[4])
 
@@ -240,6 +262,20 @@ def reordering(frames):
     txrx_frame_collation = np.transpose(collate_chiprs, (1,2,0,3))
 
     print("TxRx Collation shape: ", txrx_frame_collation.shape)
+
+    zeroes = np.zeros((txrx_frame_collation.shape[0], txrx_frame_collation.shape[1], txrx_frame_collation.shape[2], 25446))
+    ones = np.ones((txrx_frame_collation.shape[0], txrx_frame_collation.shape[1], txrx_frame_collation.shape[2], 25446))
+    complex_ = ones + 1j*zeroes
+
+    print("Frame zeroes (1+0j) shape: ", complex_.shape)
+
+    txrx_frame_collation = np.concatenate((txrx_frame_collation, complex_), axis=3)
+
+    print("TxRx Collation with Chirp and Frame Zeroes shape: ", txrx_frame_collation.shape)
+
+    data_dict['txrx_frame_collation'] = txrx_frame_collation
+
+    return data_dict
 
     chirp_diff = np.copy(master_frames)
 
@@ -261,46 +297,15 @@ def reordering(frames):
     
     print("Frame Diff TxRx Collation shape: ", frame_collate_diff.shape)
 
-    data_dict = {
-        'master_frames': master_frames,
-        'txrx_frame_collation': txrx_frame_collation,
-        'txrx_frame_collation_diff': txrx_frame_collation_diff,
-        'frame_collate_diff': frame_collate_diff
-    }
 
     return data_dict
 
 def get_stat_string(data,precision):
     return f"Max: {np.round(np.max(data),precision)} Min: {np.round(np.min(data),precision)} Mean: {np.round(np.mean(data),precision)} Std: {np.round(np.std(data),precision)}"
 
-# def plot(fftdata,filter,dir,title_name):
-#     for i in tqdm(range(fftdata.shape[0])):
-#         for j in range(fftdata.shape[1]):
-#             fig, ax = plt.subplots(2,1, figsize=(11, 8))
+def cart2pol(cart:np.ndarray):
+    return np.abs(cart), np.angle(cart)
 
-#             title = f"{title_name} TX {i+1} RX {j+1}"
-            
-#             data = fftdata[i,j,:,:]
-#             data = np.log(np.abs(data)+1e-6)
-#             data_stats = f"Max: {np.round(np.mean(data), 2)} Min: {np.round(np.min(data), 2)} Mean: {np.round(np.mean(data), 2)} Std: {np.round(np.std(data), 2)}"
-
-#             filter_ = filter[i,j,:,:]
-#             filter_ = np.log(np.abs(filter_)+1e-6)
-#             filter_ = filter_.reshape(filter_.shape[1])[::10]
-#             filter_stats = f"Max: {np.round(np.mean(filter_), 2)} Min: {np.round(np.min(filter_), 2)} Mean: {np.round(np.mean(filter_), 2)} Std: {np.round(np.std(filter_), 2)}"
-
-#             ax[0].plot(np.arange(0,filter_.shape[0]), filter_)
-#             ax[0].set_title(filter_stats)
-
-#             ax[1].imshow(data, aspect='auto')
-#             ax[1].set_title(data_stats)
-#             fig.colorbar(ax[1].imshow(data, aspect='auto'), orientation='horizontal')
-
-#             fig.suptitle(title)
-
-#             save_path = os.path.join(dir, f"{title}.png")
-#             plt.savefig(save_path)
-#             plt.close()
 
 def plot2d(original, filtered, dir, title_name, additional_stats=None):
     for i in tqdm(range(original.shape[0])):
@@ -353,6 +358,30 @@ def plot3d(data,tx=0,rx=0):
     ax.set_title(f"TX {tx+1} RX {rx+1}")
     plt.show()
 
+def plot_phase(signal, title, idx_1=0, idx_2=0):
+    data = signal[idx_1, idx_2, :, :]
+
+    a = f"Shape before: {data.shape}"
+
+    data = data.flatten()
+
+    b = f"Flattened shape: {data.shape}"
+    
+    angle = np.angle(data)
+    angle = np.unwrap(angle)
+    # angle = angle[::4096]
+
+    # c = f"Shape after skipping: {angle.shape}"
+    c=f""
+
+
+
+    plt.plot(angle)
+    plt.title(f"{title}\n{a}     {b}     {c}")
+    plt.show()
+
+    # exit(1)
+
 
 def plots(data_dict):
     master_frames = data_dict['master_frames']
@@ -360,15 +389,17 @@ def plots(data_dict):
     txrx_frame_collation_diff = data_dict['txrx_frame_collation_diff']
     frame_collate_diff = data_dict['frame_collate_diff']
 
-    filter_1 = np.copy(txrx_frame_collation) # Contains original raw data shape (12x4x511x4096)
-    filter_1 = filter_1[:,:,0:50,:] # Select the first 50 frames
-    filter_1 = np.mean(filter_1, axis=2) # Average over the frames
-    filter_1 = filter_1.reshape(filter_1.shape[0], filter_1.shape[1], 1, filter_1.shape[2]) # Reshape to (12x4x1x4096)
-    txrx_frame_filtered = np.copy(txrx_frame_collation) - filter_1 # Filtered data shape (12x4x511x4096)
-    txrx_frame_filtered = np.fft.fftshift(np.fft.fft(txrx_frame_filtered, axis=3), axes=3) # FFT of the filtered data over ADC samples
+    # filter_1 = np.copy(txrx_frame_collation) # Contains original raw data shape (12x4x511x4096)
+    # filter_1 = filter_1[:,:,0:50,:] # Select the first 50 frames
+    # filter_1 = np.mean(filter_1, axis=2) # Average over the frames
+    # filter_1 = filter_1.reshape(filter_1.shape[0], filter_1.shape[1], 1, filter_1.shape[2]) # Reshape to (12x4x1x4096)
+    # txrx_frame_filtered = np.copy(txrx_frame_collation) - filter_1 # Filtered data shape (12x4x511x4096)
+    # txrx_frame_filtered = np.fft.fftshift(np.fft.fft(txrx_frame_filtered, axis=3), axes=3) # FFT of the filtered data over ADC samples
+    # filter_1 = np.fft.fftshift(np.fft.fft(filter_1, axis=3), axes=3) # FFT of the filter over ADC samples
     txrx_frame_original = np.fft.fftshift(np.fft.fft(txrx_frame_collation, axis=3), axes=3) # FFT of the original raw data over ADC samples
-    filter_1 = np.fft.fftshift(np.fft.fft(filter_1, axis=3), axes=3) # FFT of the filter over ADC samples
 
+    plot_phase(txrx_frame_original, "TxRx Collation")
+    return
 
     filter_2 = np.copy(txrx_frame_collation_diff)
     filter_2 = np.mean(filter_2[:,:,0:50,:], axis=2)
@@ -377,12 +408,16 @@ def plots(data_dict):
     txrx_frame_filtered_diff = np.fft.fftshift(np.fft.fft(txrx_frame_filtered_diff, axis=3), axes=3)
     txrx_frame_original_diff = np.fft.fftshift(np.fft.fft(txrx_frame_collation_diff, axis=3), axes=3)
 
+    # plot_phase(txrx_frame_original_diff, "TxRx Collation Chirp Diff")
+
     filter_3 = np.copy(frame_collate_diff)
     filter_3 = np.mean(filter_3[:,:,0:50,:], axis=2)
     filter_3 = filter_3.reshape(filter_3.shape[0], filter_3.shape[1], 1, filter_3.shape[2])
     frame_filtered_diff = np.copy(frame_collate_diff) - filter_3
     frame_filtered_diff = np.fft.fftshift(np.fft.fft(frame_filtered_diff, axis=3), axes=3)
     frame_original_diff = np.fft.fftshift(np.fft.fft(frame_collate_diff, axis=3), axes=3)
+
+    # plot_phase(frame_original_diff, "Frame Diff")
 
     base_dir = os.path.join(os.getcwd(), 'fft_plots', args.output_dir)
 
@@ -414,9 +449,13 @@ def plots(data_dict):
     # plot2d(frame_original_diff, frame_filtered_diff, frame_diff_dir, "Frame Diff", frame_og_stats)
     # plot3d(txrx_frame_original)
 
-    plot2d(txrx_frame_original, txrx_frame_filtered, txrx_dir, "TxRx Collation", None)
-    plot2d(txrx_frame_original_diff, txrx_frame_filtered_diff, txrx_diff_dir, "TxRx Collation Chirp Diff", None)
-    plot2d(frame_original_diff, frame_filtered_diff, frame_diff_dir, "Frame Diff", None)
+    # plot2d(txrx_frame_original, txrx_frame_filtered, txrx_dir, "TxRx Collation", None)
+    # plot2d(txrx_frame_original_diff, txrx_frame_filtered_diff, txrx_diff_dir, "TxRx Collation Chirp Diff", None)
+    # plot2d(frame_original_diff, frame_filtered_diff, frame_diff_dir, "Frame Diff", None)
+
+
+    
+
 
 
 
@@ -429,7 +468,7 @@ if __name__ == "__main__":
     NS: int = 256
 
     # Number of chirps
-    NC: int = 16
+    NC: int = 64
 
     parser = argparse.ArgumentParser(
         prog="repack.py",
