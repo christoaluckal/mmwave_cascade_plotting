@@ -56,20 +56,37 @@ class MMWProcessor:
 
         return frame_collate_diff
     
-    def padData(self, frames: np.ndarray, chirpPads: int = 152, framePads: int = 25446, pad_type="comples") -> np.ndarray:
+    def padChirpsData(self, frames: np.ndarray, chirpPads: int = 152, pad_type="complex") -> np.ndarray:
         if pad_type == "complex":
             zeroes = np.zeros((frames.shape[0], frames.shape[1], frames.shape[2], frames.shape[3], chirpPads))
             ones = np.ones((frames.shape[0], frames.shape[1], frames.shape[2], frames.shape[3], chirpPads))
             complex_ = ones+1j*zeroes
             frames = np.concatenate((frames, complex_), axis=4)
-        
-            if framePads > 0:
-                zeroes = np.zeros((frames.shape[0], frames.shape[1], frames.shape[2], framePads, frames.shape[4]))
-                ones = np.ones((frames.shape[0], frames.shape[1], frames.shape[2], framePads, frames.shape[4]))
-                complex_ = ones+1j*zeroes
-                frames = np.concatenate((frames, complex_), axis=3)
+
+            print("Padded Complex Chirps shape: ", frames.shape)
+
+        else:
+            zeroes = np.zeros((frames.shape[0], frames.shape[1], frames.shape[2], frames.shape[3], chirpPads))
+            frames = np.concatenate((frames, zeroes), axis=4)
+            print("Padded Frames shape: ", frames.shape)
 
         return frames
+    
+    def converToFrameFormat(self, frames: np.ndarray, frame_pad: int = 25446) -> np.ndarray:
+        n_frames = frames.shape[0]
+        numLoops = frames.shape[1]
+        numDevices = frames.shape[2]
+        numChirps = frames.shape[3]
+        numSamples = frames.shape[4]
+
+        device_primary = np.transpose(frames,(2,0,1,3,4))
+        device_primary = device_primary.reshape(numDevices, n_frames, numLoops*numChirps*numSamples)
+
+        frame_pad = np.zeros((numDevices, n_frames, frame_pad))
+
+        concatenated = np.concatenate((device_primary, frame_pad), axis=2)
+        print("Frame format shape: ", concatenated.shape)
+
 
 
 if __name__ == "__main__":
@@ -86,7 +103,11 @@ if __name__ == "__main__":
 
     processor = MMWProcessor(data)
     complex_frames = processor.convertToComplex()
-    print(complex_frames.shape)
 
-    collated_frames = processor.getCollatedFrames(complex_frames)
-    print(collated_frames.shape)
+    collated_padded = processor.padChirpsData(complex_frames, chirpPads=0)
+
+    processor.converToFrameFormat(collated_padded,frame_pad=0)
+
+
+    
+
