@@ -255,7 +255,7 @@ def reordering(frames):
     # Inserting 0s to account for per chirp downtime
     zeroes = np.zeros((master_frames.shape[0], master_frames.shape[1], master_frames.shape[2], master_frames.shape[3], 152))
     ones = np.ones((master_frames.shape[0], master_frames.shape[1], master_frames.shape[2], master_frames.shape[3], 152))
-    complex_ = ones + 1j*zeroes
+    complex_ = zeroes
 
     # Concatenate 0s to the unwrapped phase
     master_frames = np.concatenate((master_frames, complex_), axis=4)
@@ -273,11 +273,11 @@ def reordering(frames):
 
     zeroes = np.zeros((txrx_frame_collation.shape[0], txrx_frame_collation.shape[1], txrx_frame_collation.shape[2], 25446))
     ones = np.ones((txrx_frame_collation.shape[0], txrx_frame_collation.shape[1], txrx_frame_collation.shape[2], 25446))
-    complex_ = ones + 1j*zeroes
+    complex_ = zeroes
 
     print("Frame zeroes (1+0j) shape: ", complex_.shape)
 
-    txrx_frame_collation = np.concatenate((txrx_frame_collation, complex_), axis=3)
+    # txrx_frame_collation = np.concatenate((txrx_frame_collation, complex_), axis=3)
 
     print("TxRx Collation with Chirp and Frame Zeroes shape: ", txrx_frame_collation.shape)
 
@@ -390,6 +390,15 @@ def plot_phase(signal, title, idx_1=0, idx_2=0):
 
     # exit(1)
 
+def plot_simple(data, title):
+    data = np.log(np.abs(data)+1e-6)
+    for i in range(data.shape[0]):
+        for j in range(data.shape[1]):
+            plt.imshow(data[i,j,:,:], aspect='auto')
+            plt.colorbar()
+            plt.title(f"{title} TX {i+1} RX {j+1}")
+            plt.show()
+            plt.close()
 
 def plots(data_dict):
     master_frames = data_dict['master_frames']
@@ -406,7 +415,9 @@ def plots(data_dict):
     # filter_1 = np.fft.fftshift(np.fft.fft(filter_1, axis=3), axes=3) # FFT of the filter over ADC samples
     txrx_frame_original = np.fft.fftshift(np.fft.fft(txrx_frame_collation, axis=3), axes=3) # FFT of the original raw data over ADC samples
 
-    plot_phase(txrx_frame_original, "TxRx Collation")
+    plot_simple(txrx_frame_original, "TxRx Collation")
+
+    # plot_phase(txrx_frame_original, "TxRx Collation")
     return
 
     filter_2 = np.copy(txrx_frame_collation_diff)
