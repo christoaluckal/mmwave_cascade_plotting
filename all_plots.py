@@ -237,19 +237,27 @@ def reordering(frames):
         'frame_collate_diff': None
     }
 
-    master_frames = np.array(frames)
-    master_frames = master_frames[...,0]+1j*master_frames[...,1]
+    # Original Frame data
+    original_frames = np.array(frames)
 
+    # Convert to complex
+    master_frames = original_frames[...,0]+1j*original_frames[...,1]
+    
+    print("Frame Data shape: ", master_frames.shape)
 
-    print("Original Frame Data shape: ", master_frames.shape)
+    # Unwrap over phase of 256 ADC samples
+    unwrapped = np.unwrap(np.angle(master_frames), axis=4)
+    print("Unwrapped Frame shape: ", unwrapped.shape)
+
+    # Consider unwrapped phase as base
+    master_frames = unwrapped
 
     # Inserting 0s to account for per chirp downtime
     zeroes = np.zeros((master_frames.shape[0], master_frames.shape[1], master_frames.shape[2], master_frames.shape[3], 152))
     ones = np.ones((master_frames.shape[0], master_frames.shape[1], master_frames.shape[2], master_frames.shape[3], 152))
     complex_ = ones + 1j*zeroes
 
-    print("Chirp zeroes (1+0j) shape: ", complex_.shape)
-
+    # Concatenate 0s to the unwrapped phase
     master_frames = np.concatenate((master_frames, complex_), axis=4)
 
     data_dict['master_frames'] = master_frames
